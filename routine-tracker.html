@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Routine">
+  <meta name="description" content="Daily routine tracker">
+  <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Daily%20Routine%22%2C%22short_name%22%3A%22Routine%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230a0a0f%22%2C%22theme_color%22%3A%22%23a855f7%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fpng%3Bbase64%2CiVBORw0KGgo%3D%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%7D%5D%7D">
+  <title>Daily Routine</title>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overscroll-behavior: none; }
+    body {
+      background: #0a0a0f;
+      color: #fff;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    #root { max-width: 430px; margin: 0 auto; min-height: 100vh; position: relative; }
+    .scroll-area { height: calc(100dvh - 64px); overflow-y: auto; overflow-x: hidden; }
+    .scroll-area::-webkit-scrollbar { width: 2px; }
+    .scroll-area::-webkit-scrollbar-track { background: transparent; }
+    .scroll-area::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
+    @keyframes pulse-ring {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+    .pulse-dot { animation: pulse-ring 2s ease-in-out infinite; }
+    button { -webkit-tap-highlight-color: transparent; }
+    * { transition: opacity 0.15s ease, background-color 0.15s ease; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    /* ─────────────────────────── CONSTANTS ─────────────────────────── */
+
+    const C = {
+      bg: '#0a0a0f', surface: '#12121a', elevated: '#1a1a2e',
+      primary: '#a855f7', secondary: '#06b6d4',
+      success: '#22c55e', warning: '#f59e0b', danger: '#ef4444',
+      text: '#ffffff', textSec: '#a1a1aa', textMuted: '#52525b',
+    };
+
+    const CAT = { work: '#a855f7', health: '#22c55e', nutrition: '#f59e0b', creative: '#06b6d4' };
+    const DAYS  = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const DSHRT = ['S','M','T','W','T','F','S'];
+
+    const DEFAULT_BLOCKS = [
+      { id:'b1',  name:'Deep Work',           category:'creative',  timeStart:'00:00', timeEnd:'03:00', activeDays:[0,1,2,3,4,5,6], weeklyTarget:null, trackable:false, dailyTarget:null, icon:'🧠' },
+      { id:'b2',  name:'Sleep',               category:'health',    timeStart:'03:30', timeEnd:'10:30', activeDays:[0,1,2,3,4,5,6], weeklyTarget:null, trackable:false, dailyTarget:null, icon:'😴' },
+      { id:'b3',  name:'Meal 1',              category:'nutrition', timeStart:'11:00', timeEnd:'11:30', activeDays:[0,1,2,3,4,5,6], weeklyTarget:null, trackable:false, dailyTarget:null, icon:'🍳' },
+      { id:'b4',  name:'Cold Calls',          category:'work',      timeStart:'11:30', timeEnd:'14:30', activeDays:[1,2,3,4,5,6],   weeklyTarget:100,  trackable:true,  dailyTarget:20,   icon:'📞' },
+      { id:'b5',  name:'Client Delivery',     category:'work',      timeStart:'14:30', timeEnd:'17:00', activeDays:[1,2,3,4,5,6],   weeklyTarget:null, trackable:false, dailyTarget:null, icon:'💼' },
+      { id:'b6',  name:'Meal 2 + Rest',       category:'nutrition', timeStart:'17:00', timeEnd:'18:30', activeDays:[0,1,2,3,4,5,6], weeklyTarget:null, trackable:false, dailyTarget:null, icon:'🥗' },
+      { id:'b7',  name:'Gym',                 category:'health',    timeStart:'19:00', timeEnd:'20:30', activeDays:[1,2,3,4,5,6],   weeklyTarget:null, trackable:false, dailyTarget:null, icon:'💪' },
+      { id:'b8',  name:'Meal 3',              category:'nutrition', timeStart:'21:00', timeEnd:'21:30', activeDays:[0,1,2,3,4,5,6], weeklyTarget:null, trackable:false, dailyTarget:null, icon:'🍽️' },
+      { id:'b9',  name:'Reels / Content',     category:'creative',  timeStart:'21:30', timeEnd:'23:00', activeDays:[1,2,3,4,5,6],   weeklyTarget:null, trackable:false, dailyTarget:null, icon:'🎬' },
+      { id:'b10', name:'Planning + Wind Down',category:'work',      timeStart:'23:00', timeEnd:'24:00', activeDays:[0,1,2,3,4,5,6], weeklyTarget:null, trackable:false, dailyTarget:null, icon:'📋' },
+    ];
+
+    const DEFAULT_HABITS = [
+      { id:'h1', name:'Cold Calls 20+',   icon:'📞', activeDays:[1,2,3,4,5,6], weeklyTarget:100,  trackable:true,  dailyTarget:20   },
+      { id:'h2', name:'Gym Completed',    icon:'💪', activeDays:[1,2,3,4,5,6], weeklyTarget:null, trackable:false, dailyTarget:null },
+      { id:'h3', name:'3000+ Calories',   icon:'🔥', activeDays:[0,1,2,3,4,5,6], weeklyTarget:null, trackable:true,  dailyTarget:3000 },
+      { id:'h4', name:'Deep Work 3hr',    icon:'🧠', activeDays:[0,1,2,3,4,5,6], weeklyTarget:null, trackable:false, dailyTarget:null },
+      { id:'h5', name:'Reel Posted',      icon:'🎬', activeDays:[1,2,3,4,5,6], weeklyTarget:null, trackable:false, dailyTarget:null },
+    ];
+
+    /* ─────────────────────────── UTILITIES ─────────────────────────── */
+
+    const getDateStr = d => {
+      const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+      return `${y}-${m}-${day}`;
+    };
+
+    const parseTime = t => {
+      if (t === '24:00') return 1440;
+      const [h,m] = t.split(':').map(Number);
+      return h*60+m;
+    };
+
+    const fmt12 = t => {
+      if (!t || t === '24:00') return '12:00 AM';
+      const [h,m] = t.split(':').map(Number);
+      const p = h < 12 ? 'AM' : 'PM';
+      const hr = h % 12 || 12;
+      return `${hr}:${String(m).padStart(2,'0')} ${p}`;
+    };
+
+    const nowMins = () => { const n = new Date(); return n.getHours()*60 + n.getMinutes(); };
+
+    const getWeekStart = date => {
+      const d = new Date(date); d.setHours(0,0,0,0);
+      const diff = d.getDay() === 0 ? -6 : 1 - d.getDay();
+      d.setDate(d.getDate() + diff); return d;
+    };
+
+    const getWeekDays = date => {
+      const mon = getWeekStart(date);
+      return Array.from({length:7}, (_,i) => { const d = new Date(mon); d.setDate(mon.getDate()+i); return d; });
+    };
+
+    const last30Days = () => {
+      const t = new Date(); t.setHours(0,0,0,0);
+      return Array.from({length:30}, (_,i) => { const d = new Date(t); d.setDate(t.getDate()-(29-i)); return d; });
+    };
+
+    const todayBlocks = (blocks, date) => {
+      const dow = date.getDay();
+      return blocks.filter(b => b.activeDays.includes(dow)).sort((a,b) => parseTime(a.timeStart)-parseTime(b.timeStart));
+    };
+
+    const calcStreak = (id, logs, activeDays) => {
+      const today = new Date(); today.setHours(0,0,0,0);
+      let streak = 0;
+      for (let i = 0; i < 365; i++) {
+        const d = new Date(today); d.setDate(today.getDate()-i);
+        if (!activeDays.includes(d.getDay())) continue;
+        const log = logs[getDateStr(d)]?.[id];
+        const done = log && (log.completed || (log.value != null && log.value > 0));
+        if (done) { streak++; }
+        else if (i === 0) { continue; } // today not yet logged
+        else { break; }
+      }
+      return streak;
+    };
+
+    const greeting = () => {
+      const h = new Date().getHours();
+      if (h < 5)  return 'Late night grind';
+      if (h < 12) return 'Good morning';
+      if (h < 17) return 'Good afternoon';
+      if (h < 21) return 'Good evening';
+      return 'Night session';
+    };
+
+    const uid = () => Math.random().toString(36).slice(2,10);
+    const dayLabel = days => [...days].sort((a,b) => a-b).map(d => DAYS[d].slice(0,3)).join(', ');
+
+    const normalizeBlocks = data => {
+      if (!Array.isArray(data)) return DEFAULT_BLOCKS;
+      return data.map((b, i) => ({
+        id: b.id || `b${i+1}`,
+        name: b.name || 'Untitled Block',
+        category: CAT[b.category] ? b.category : 'work',
+        timeStart: b.timeStart || '09:00',
+        timeEnd: b.timeEnd || '10:00',
+        activeDays: Array.isArray(b.activeDays) && b.activeDays.length ? b.activeDays : [1,2,3,4,5,6],
+        weeklyTarget: b.weeklyTarget ?? null,
+        trackable: !!b.trackable,
+        dailyTarget: b.dailyTarget ?? null,
+        icon: b.icon || '',
+      }));
+    };
+
+    const normalizeHabits = data => {
+      if (!Array.isArray(data)) return DEFAULT_HABITS;
+      return data.map((h, i) => ({
+        id: h.id || `h${i+1}`,
+        name: h.name || 'Untitled Habit',
+        icon: h.icon || '⭐',
+        activeDays: Array.isArray(h.activeDays) && h.activeDays.length ? h.activeDays : [1,2,3,4,5,6],
+        weeklyTarget: h.weeklyTarget ?? null,
+        trackable: !!h.trackable,
+        dailyTarget: h.dailyTarget ?? null,
+      }));
+    };
+
+    /* ─────────────────────────── NUDGE LOGIC ─────────────────────────── */
+
+    const genNudges = (blocks, habits, logs) => {
+      const nudges = [];
+      const today = new Date(); today.setHours(0,0,0,0);
+      const todayStr = getDateStr(today);
+      const yday = new Date(today); yday.setDate(today.getDate()-1);
+      const ydayStr = getDateStr(yday);
+      const weekDays = getWeekDays(today);
+
+      // 1 — Trackable blocks: weekly progress
+      for (const b of blocks) {
+        if (!b.weeklyTarget || !b.trackable) continue;
+        let weekTotal = 0;
+        weekDays.forEach(d => {
+          const v = logs[getDateStr(d)]?.[b.id]?.value;
+          if (v != null) weekTotal += v;
+        });
+        const remaining = Math.max(0, b.weeklyTarget - weekTotal);
+        const daysLeft = weekDays.filter(d => {
+          const ds = getDateStr(d);
+          return ds >= todayStr && b.activeDays.includes(d.getDay());
+        }).length;
+        const ydayVal = logs[ydayStr]?.[b.id]?.value;
+
+        if (remaining > 0 && daysLeft > 0) {
+          const needed = Math.ceil(remaining / daysLeft);
+          if (ydayVal != null && ydayVal < (b.dailyTarget || needed)) {
+            nudges.push({ id:`track_${b.id}`, pri:2, msg:`You did ${ydayVal} ${b.name.toLowerCase()} yesterday. ${remaining} left this week across ${daysLeft} day${daysLeft!==1?'s':''} — aim for ${needed} today.` });
+          }
+        }
+      }
+
+      // 2 — Habit streaks at risk
+      for (const h of habits) {
+        const streak = calcStreak(h.id, logs, h.activeDays);
+        if (streak >= 3 && h.activeDays.includes(today.getDay())) {
+          const done = logs[todayStr]?.[h.id]?.completed;
+          if (!done) nudges.push({ id:`streak_${h.id}`, pri:1, msg:`${h.name} streak is at ${streak} days. Don't break it.` });
+        }
+      }
+
+      // 3 — Trackable habits behind on averages
+      for (const h of habits) {
+        if (!h.trackable || !h.dailyTarget) continue;
+        const pastDays = weekDays.filter(d => {
+          const ds = getDateStr(d);
+          return ds < todayStr && h.activeDays.includes(d.getDay());
+        });
+        if (pastDays.length === 0) continue;
+        const vals = pastDays.map(d => logs[getDateStr(d)]?.[h.id]?.value).filter(v => v != null);
+        if (vals.length > 0) {
+          const avg = Math.round(vals.reduce((s,v) => s+v, 0) / vals.length);
+          if (avg < h.dailyTarget * 0.85) {
+            nudges.push({ id:`avg_${h.id}`, pri:3, msg:`${h.name}: averaging ${avg}/day this week. Push for ${h.dailyTarget}+ today to stay on track.` });
+          }
+        }
+      }
+
+      // 4 — Yesterday completion drop
+      const ydayTodayBlocks = todayBlocks(blocks, yday);
+      if (ydayTodayBlocks.length > 0) {
+        const ydayDone = ydayTodayBlocks.filter(b => logs[ydayStr]?.[b.id]?.completed).length;
+        const pct = Math.round((ydayDone / ydayTodayBlocks.length) * 100);
+        const priorPcts = weekDays
+          .filter(d => getDateStr(d) < ydayStr)
+          .map(d => {
+            const ds = getDateStr(d);
+            const dayBlocks = todayBlocks(blocks, d);
+            if (dayBlocks.length === 0) return null;
+            const dayDone = dayBlocks.filter(b => logs[ds]?.[b.id]?.completed).length;
+            return Math.round((dayDone / dayBlocks.length) * 100);
+          })
+          .filter(v => v != null);
+        const avg = priorPcts.length ? Math.round(priorPcts.reduce((s,v) => s + v, 0) / priorPcts.length) : null;
+        if (pct > 0 && ((avg != null && pct <= avg - 20) || pct < 65) && nudges.length < 2) {
+          nudges.push({
+            id:'completion_drop',
+            pri:4,
+            msg: avg != null
+              ? `You completed ${pct}% of your blocks yesterday, down from ${avg}% average. Reset today.`
+              : `You completed ${pct}% of your blocks yesterday. Rough day or losing focus?`
+          });
+        }
+      }
+
+      // 5 — Positive nudge
+      if (nudges.length === 0) {
+        const gymH = habits.find(h => h.name.toLowerCase().includes('gym'));
+        const gymStreak = gymH ? calcStreak(gymH.id, logs, gymH.activeDays) : 0;
+        const ccBlock = blocks.find(b => b.trackable && b.weeklyTarget && b.name.toLowerCase().includes('call'));
+        let ccTotal = 0;
+        if (ccBlock) weekDays.forEach(d => { const v = logs[getDateStr(d)]?.[ccBlock.id]?.value; if (v) ccTotal += v; });
+
+        const parts = [];
+        if (gymStreak >= 5) parts.push(`${gymStreak}-day gym streak`);
+        if (ccBlock && ccTotal >= ccBlock.weeklyTarget * 0.7) parts.push(`Cold calls at ${ccTotal}/${ccBlock.weeklyTarget} for the week`);
+        if (parts.length) nudges.push({ id:'positive', pri:5, msg:`${parts.join('. ')}. Keep pushing.` });
+      }
+
+      nudges.sort((a,b) => a.pri - b.pri);
+      return nudges.slice(0,2);
+    };
+
+    /* ─────────────────────────── SVG ICONS ─────────────────────────── */
+
+    const Svg = ({ children, size=20, style, className }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style} className={className}>
+        {children}
+      </svg>
+    );
+    const IcoHome     = p => <Svg {...p}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></Svg>;
+    const IcoFlame    = p => <Svg {...p}><path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 2.5z"/></Svg>;
+    const IcoBar      = p => <Svg {...p}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></Svg>;
+    const IcoEdit     = p => <Svg {...p}><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></Svg>;
+    const IcoCheck    = p => <Svg {...p}><polyline points="20,6 9,17 4,12"/></Svg>;
+    const IcoPlus     = p => <Svg {...p}><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></Svg>;
+    const IcoX        = p => <Svg {...p}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></Svg>;
+    const IcoUp       = p => <Svg {...p}><polyline points="18,15 12,9 6,15"/></Svg>;
+    const IcoDn       = p => <Svg {...p}><polyline points="6,9 12,15 18,9"/></Svg>;
+    const IcoTrash    = p => <Svg {...p}><polyline points="3,6 5,6 21,6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></Svg>;
+    const IcoAlert    = p => <Svg {...p}><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></Svg>;
+    const IcoTrend    = p => <Svg {...p}><polyline points="23,6 13.5,15.5 8.5,10.5 1,18"/><polyline points="17,6 23,6 23,12"/></Svg>;
+
+    /* ─────────────────────────── PROGRESS RING ─────────────────────────── */
+
+    const ProgressRing = ({ done, total, size=90 }) => {
+      const sw = 7, r = (size-sw)/2, circ = 2*Math.PI*r;
+      const pct = total > 0 ? Math.min(done/total, 1) : 0;
+      const offset = circ - pct * circ;
+      return (
+        <div style={{ position:'relative', width:size, height:size, flexShrink:0 }}>
+          <svg width={size} height={size} style={{ transform:'rotate(-90deg)' }}>
+            <defs>
+              <linearGradient id="rg" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor="#a855f7"/>
+                <stop offset="100%" stopColor="#06b6d4"/>
+              </linearGradient>
+            </defs>
+            <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1a1a2e" strokeWidth={sw}/>
+            <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="url(#rg)" strokeWidth={sw}
+              strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset}
+              style={{ transition:'stroke-dashoffset 0.6s ease' }}/>
+          </svg>
+          <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', textAlign:'center', lineHeight:1.1 }}>
+            <div style={{ fontSize:19, fontWeight:700, color:'#fff' }}>{done}</div>
+            <div style={{ fontSize:10, color:'#a1a1aa' }}>of {total}</div>
+          </div>
+        </div>
+      );
+    };
+
+    /* ─────────────────────────── BOTTOM NAV ─────────────────────────── */
+
+    const Nav = ({ tab, setTab }) => {
+      const tabs = [
+        { id:'today', label:'Today', I:IcoHome },
+        { id:'habits', label:'Habits', I:IcoFlame },
+        { id:'stats', label:'Stats', I:IcoBar },
+        { id:'edit', label:'Edit', I:IcoEdit },
+      ];
+      return (
+        <nav style={{
+          position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)',
+          width:'100%', maxWidth:430, backgroundColor:'#0f0f17',
+          borderTop:'1px solid #1a1a2e', display:'flex', justifyContent:'space-around',
+          padding:'8px 0 max(8px, env(safe-area-inset-bottom))', zIndex:200,
+        }}>
+          {tabs.map(({id,label,I}) => {
+            const active = tab === id;
+            return (
+              <button key={id} onClick={() => setTab(id)} style={{
+                display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+                padding:'4px 20px', background:'none', border:'none', cursor:'pointer',
+                color: active ? '#a855f7' : '#52525b',
+              }}>
+                <I size={20}/>
+                <span style={{ fontSize:10, fontWeight: active ? 600 : 400 }}>{label}</span>
+              </button>
+            );
+          })}
+        </nav>
+      );
+    };
+
+    /* ─────────────────────────── TODAY TAB ─────────────────────────── */
+
+    const TodayTab = ({ blocks, habits, logs, setLogs }) => {
+      const [dismissed, setDismissed] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('dismissedNudges') || '{}'); } catch { return {}; }
+      });
+      const [editId, setEditId] = useState(null);
+      const [inputVal, setInputVal] = useState('');
+      const [curTime, setCurTime] = useState(nowMins());
+
+      useEffect(() => {
+        const t = setInterval(() => setCurTime(nowMins()), 30000);
+        return () => clearInterval(t);
+      }, []);
+
+      const today = new Date();
+      const todayStr = getDateStr(today);
+      const tBlocks = useMemo(() => todayBlocks(blocks, today), [blocks, todayStr]);
+      const dayLog = logs[todayStr] || {};
+      const doneCount = tBlocks.filter(b => dayLog[b.id]?.completed).length;
+
+      // Nudges
+      const allNudges = useMemo(() => genNudges(blocks, habits, logs), [blocks, habits, logs]);
+      const todayDism = dismissed[todayStr] || [];
+      const visNudges = allNudges.filter(n => !todayDism.includes(n.id));
+
+      const dismiss = id => {
+        const nd = { ...dismissed, [todayStr]: [...todayDism, id] };
+        setDismissed(nd);
+        localStorage.setItem('dismissedNudges', JSON.stringify(nd));
+      };
+
+      const updateLog = (id, data) => {
+        setLogs(prev => ({
+          ...prev,
+          [todayStr]: { ...(prev[todayStr]||{}), [id]: { ...(prev[todayStr]||{})[id], ...data, timestamp: Date.now() } }
+        }));
+      };
+
+      const tap = b => {
+        if (b.trackable) {
+          setEditId(b.id); setInputVal(dayLog[b.id]?.value?.toString() || '');
+        } else {
+          updateLog(b.id, { completed: !dayLog[b.id]?.completed });
+        }
+      };
+
+      const saveVal = id => {
+        const v = parseInt(inputVal, 10) || 0;
+        const b = blocks.find(x => x.id === id);
+        const done = b?.dailyTarget ? v >= b.dailyTarget : v > 0;
+        updateLog(id, { completed: done, value: v });
+        setEditId(null);
+      };
+
+      // Insert time indicator at correct position
+      const indPos = useMemo(() => {
+        const idx = tBlocks.findIndex(b => parseTime(b.timeStart) > curTime);
+        return idx === -1 ? tBlocks.length : idx;
+      }, [tBlocks, curTime]);
+
+      const curTimeStr = `${String(Math.floor(curTime/60)).padStart(2,'0')}:${String(curTime%60).padStart(2,'0')}`;
+      const dateLabel = today.toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
+
+      return (
+        <div style={{ padding:'20px 16px 12px' }}>
+          {/* Header */}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
+            <div>
+              <div style={{ fontSize:12, color:'#a1a1aa', marginBottom:3 }}>{dateLabel}</div>
+              <div style={{ fontSize:22, fontWeight:700, color:'#fff' }}>{greeting()}</div>
+            </div>
+            <ProgressRing done={doneCount} total={tBlocks.length}/>
+          </div>
+
+          {/* Nudges */}
+          {visNudges.map(n => (
+            <div key={n.id} style={{
+              background:'#17170a', borderLeft:'3px solid #f59e0b', borderRadius:8,
+              padding:'10px 12px', marginBottom:8,
+              display:'flex', alignItems:'flex-start', gap:8,
+            }}>
+              <IcoAlert size={14} style={{ color:'#f59e0b', flexShrink:0, marginTop:1 }}/>
+              <span style={{ flex:1, fontSize:13, color:'#f5e17a', lineHeight:1.45 }}>{n.msg}</span>
+              <button onClick={() => dismiss(n.id)}
+                style={{ background:'none', border:'none', color:'#52525b', cursor:'pointer', flexShrink:0, padding:'0 0 0 4px' }}>
+                <IcoX size={13}/>
+              </button>
+            </div>
+          ))}
+
+          {/* Timeline */}
+          <div>
+            {tBlocks.map((b, idx) => {
+              const log = dayLog[b.id];
+              const done = log?.completed;
+              const past = parseTime(b.timeEnd) <= curTime;
+              const current = parseTime(b.timeStart) <= curTime && parseTime(b.timeEnd) > curTime;
+              const missed = past && !done;
+              const catClr = CAT[b.category];
+              const isEditing = editId === b.id;
+
+              return (
+                <React.Fragment key={b.id}>
+                  {idx === indPos && (
+                    <div style={{ display:'flex', alignItems:'center', gap:6, margin:'5px 0' }}>
+                      <div style={{ width:6, height:6, borderRadius:'50%', background:'#06b6d4', flexShrink:0 }}/>
+                      <div style={{ flex:1, height:1, background:'#06b6d4', opacity:0.6 }}/>
+                      <span style={{ fontSize:10, color:'#06b6d4', fontWeight:500, flexShrink:0 }}>{fmt12(curTimeStr)}</span>
+                    </div>
+                  )}
+
+                  <div onClick={() => tap(b)} style={{
+                    background: current ? '#14141f' : '#12121a',
+                    borderRadius:10, padding:'11px 13px', marginBottom:6,
+                    display:'flex', alignItems:'center', gap:11,
+                    opacity: done ? 0.5 : 1, cursor:'pointer',
+                    border: current ? '1px solid rgba(168,85,247,0.25)' : '1px solid transparent',
+                  }}>
+                    {/* Category dot */}
+                    <div style={{
+                      width:7, height:7, borderRadius:'50%', flexShrink:0,
+                      background: missed ? '#6b2737' : catClr,
+                    }}/>
+
+                    {/* Content */}
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'wrap' }}>
+                        <span style={{ fontSize:13 }}>{b.icon}</span>
+                        <span style={{
+                          fontSize:14, fontWeight:500,
+                          color: missed ? '#52525b' : '#fff',
+                          textDecoration: done ? 'line-through' : 'none',
+                        }}>{b.name}</span>
+                        {b.trackable && log?.value != null && (
+                          <span style={{ fontSize:11, color:'#a1a1aa' }}>({log.value})</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize:11, color:'#52525b', marginTop:2 }}>
+                        {fmt12(b.timeStart)} – {fmt12(b.timeEnd)}
+                      </div>
+
+                      {isEditing && (
+                        <div onClick={e => e.stopPropagation()}
+                          style={{ display:'flex', gap:6, marginTop:8, alignItems:'center' }}>
+                          <input type="number" value={inputVal}
+                            onChange={e => setInputVal(e.target.value)}
+                            onKeyDown={e => e.key==='Enter' && saveVal(b.id)}
+                            autoFocus
+                            placeholder={b.dailyTarget ? `Target: ${b.dailyTarget}` : '0'}
+                            style={{
+                              width:110, padding:'5px 9px',
+                              background:'#1a1a2e', border:'1px solid #a855f7',
+                              borderRadius:7, color:'#fff', fontSize:13, outline:'none',
+                            }}/>
+                          <button onClick={() => saveVal(b.id)} style={{
+                            padding:'5px 12px', background:'#a855f7', border:'none',
+                            borderRadius:7, color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer',
+                          }}>Save</button>
+                          <button onClick={e => { e.stopPropagation(); setEditId(null); }}
+                            style={{ background:'none', border:'none', color:'#52525b', cursor:'pointer' }}>
+                            <IcoX size={13}/>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Completion indicator */}
+                    <div style={{ flexShrink:0 }}>
+                      {done ? (
+                        <div style={{
+                          width:24, height:24, borderRadius:'50%',
+                          background:'rgba(6,182,212,0.15)',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                        }}>
+                          <IcoCheck size={12} style={{ color:'#06b6d4' }}/>
+                        </div>
+                      ) : missed ? (
+                        <div style={{ width:7, height:7, borderRadius:'50%', background:'#2a2a2a' }}/>
+                      ) : b.trackable ? (
+                        <div style={{
+                          width:24, height:24, borderRadius:'50%',
+                          border:'1.5px solid #a855f7', background:'rgba(168,85,247,0.08)',
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                        }}>
+                          <span style={{ fontSize:10, color:'#a855f7', lineHeight:1 }}>+</span>
+                        </div>
+                      ) : (
+                        <div style={{
+                          width:24, height:24, borderRadius:'50%',
+                          border:'1.5px solid #1a1a2e',
+                        }}/>
+                      )}
+                    </div>
+                  </div>
+                </React.Fragment>
+              );
+            })}
+
+            {tBlocks.length === 0 && (
+              <div style={{ textAlign:'center', color:'#52525b', fontSize:14, padding:'40px 0' }}>
+                No blocks scheduled for today.
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    /* ─────────────────────────── HABITS TAB ─────────────────────────── */
+
+    const HabitsTab = ({ habits, setHabits, logs, setLogs }) => {
+      const [editId, setEditId] = useState(null);
+      const [inputVal, setInputVal] = useState('');
+      const [showAdd, setShowAdd] = useState(false);
+      const [draft, setDraft] = useState({ name:'', icon:'⭐', activeDays:[1,2,3,4,5,6], trackable:false, dailyTarget:'', weeklyTarget:'' });
+
+      const today = new Date();
+      const todayStr = getDateStr(today);
+      const dayLog = logs[todayStr] || {};
+      const dots = useMemo(() => last30Days(), [todayStr]);
+
+      const tap = h => {
+        if (!h.activeDays.includes(today.getDay())) return;
+        if (h.trackable) { setEditId(h.id); setInputVal(dayLog[h.id]?.value?.toString() || ''); }
+        else { setLogs(prev => ({ ...prev, [todayStr]: { ...(prev[todayStr]||{}), [h.id]: { ...(prev[todayStr]||{})[h.id], completed:!(dayLog[h.id]?.completed), timestamp:Date.now() } } })); }
+      };
+
+      const saveVal = id => {
+        const v = parseInt(inputVal, 10) || 0;
+        const h = habits.find(x => x.id===id);
+        const done = h?.dailyTarget ? v >= h.dailyTarget : v > 0;
+        setLogs(prev => ({ ...prev, [todayStr]: { ...(prev[todayStr]||{}), [id]: { ...(prev[todayStr]||{})[id], completed:done, value:v, timestamp:Date.now() } } }));
+        setEditId(null);
+      };
+
+      const addHabit = () => {
+        if (!draft.name.trim()) return;
+        setHabits(prev => [...prev, {
+          ...draft,
+          id:uid(),
+          dailyTarget: draft.dailyTarget ? parseInt(draft.dailyTarget, 10) || null : null,
+          weeklyTarget: draft.weeklyTarget ? parseInt(draft.weeklyTarget, 10) || null : null
+        }]);
+        setShowAdd(false);
+        setDraft({ name:'', icon:'⭐', activeDays:[1,2,3,4,5,6], trackable:false, dailyTarget:'', weeklyTarget:'' });
+      };
+
+      const DayPicker = ({ days, onChange }) => (
+        <div style={{ display:'flex', gap:4 }}>
+          {DSHRT.map((d,i) => (
+            <button key={i} onClick={() => onChange(days.includes(i) ? days.filter(x=>x!==i) : [...days,i])}
+              style={{ flex:1, padding:'5px 0', fontSize:10, fontWeight:600, borderRadius:6, border:'none', cursor:'pointer',
+                background: days.includes(i) ? '#a855f7' : '#1a1a2e', color: days.includes(i) ? '#fff' : '#52525b' }}>
+              {d}
+            </button>
+          ))}
+        </div>
+      );
+
+      return (
+        <div style={{ padding:'20px 16px 12px' }}>
+          <h2 style={{ fontSize:20, fontWeight:700, color:'#fff', marginBottom:16 }}>Habits</h2>
+
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:12 }}>
+            {habits.map(h => {
+              const streak = calcStreak(h.id, logs, h.activeDays);
+              const isActive = h.activeDays.includes(today.getDay());
+              const done = dayLog[h.id]?.completed;
+              const val = dayLog[h.id]?.value;
+              const isEditing = editId === h.id;
+
+              return (
+                <div key={h.id} onClick={() => tap(h)} style={{
+                  background:'#12121a', borderRadius:12, padding:'14px 12px',
+                  cursor: isActive ? 'pointer' : 'default', opacity: isActive ? 1 : 0.45,
+                  border: done ? '1px solid rgba(6,182,212,0.25)' : '1px solid transparent',
+                }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:7 }}>
+                    <span style={{ fontSize:22 }}>{h.icon}</span>
+                    <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+                      {streak > 0 && <span style={{ fontSize:11, color:'#f59e0b', fontWeight:600 }}>🔥{streak}</span>}
+                      {done && <IcoCheck size={12} style={{ color:'#06b6d4' }}/>}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize:13, fontWeight:500, color:'#fff', lineHeight:1.3, marginBottom:4 }}>{h.name}</div>
+                  {val != null && <div style={{ fontSize:11, color:'#a1a1aa', marginBottom:4 }}>Today: {val}</div>}
+
+                  {isEditing && (
+                    <div onClick={e => e.stopPropagation()} style={{ display:'flex', gap:4, marginBottom:6 }}>
+                      <input type="number" value={inputVal} onChange={e => setInputVal(e.target.value)}
+                        onKeyDown={e => e.key==='Enter' && saveVal(h.id)} autoFocus
+                        style={{ flex:1, minWidth:0, padding:'4px 7px', background:'#1a1a2e', border:'1px solid #a855f7', borderRadius:6, color:'#fff', fontSize:13, outline:'none' }}/>
+                      <button onClick={e => { e.stopPropagation(); saveVal(h.id); }}
+                        style={{ padding:'4px 9px', background:'#a855f7', border:'none', borderRadius:6, color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>✓</button>
+                    </div>
+                  )}
+
+                  {/* 30-day dot grid */}
+                  <div style={{ display:'flex', flexWrap:'wrap', gap:2, marginTop:6 }}>
+                    {dots.map((d,i) => {
+                      const ds = getDateStr(d);
+                      const isToday = ds === todayStr;
+                      const ok = logs[ds]?.[h.id]?.completed;
+                      const active = h.activeDays.includes(d.getDay());
+                      return (
+                        <div key={i} className={isToday && !ok && active ? 'pulse-dot' : ''} style={{
+                          width:6, height:6, borderRadius:'50%',
+                          background: !active ? 'transparent' : ok ? '#06b6d4' : 'transparent',
+                          boxShadow: !active || ok ? 'none' : 'inset 0 0 0 1px rgba(82,82,91,0.65)',
+                        }}/>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {showAdd ? (
+            <div style={{ background:'#12121a', borderRadius:12, padding:16, marginBottom:12 }}>
+              <div style={{ fontSize:14, fontWeight:600, color:'#fff', marginBottom:12 }}>New Habit</div>
+              <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                <input value={draft.icon} onChange={e => setDraft({...draft, icon:e.target.value})}
+                  style={{ width:44, padding:6, background:'#1a1a2e', border:'1px solid #333', borderRadius:8, color:'#fff', fontSize:18, outline:'none', textAlign:'center' }}/>
+                <input value={draft.name} onChange={e => setDraft({...draft, name:e.target.value})}
+                  placeholder="Habit name" autoFocus
+                  style={{ flex:1, padding:'7px 10px', background:'#1a1a2e', border:'1px solid #333', borderRadius:8, color:'#fff', fontSize:13, outline:'none' }}/>
+              </div>
+              <div style={{ marginBottom:10 }}>
+                <DayPicker days={draft.activeDays} onChange={days => setDraft({...draft, activeDays:days})}/>
+              </div>
+              <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:10 }}>
+                <label style={{ display:'flex', gap:7, alignItems:'center', cursor:'pointer' }}>
+                  <input type="checkbox" checked={draft.trackable} onChange={e => setDraft({...draft, trackable:e.target.checked})} style={{ accentColor:'#a855f7', width:14, height:14 }}/>
+                  <span style={{ fontSize:13, color:'#a1a1aa' }}>Trackable number</span>
+                </label>
+                {draft.trackable && (
+                  <>
+                    <input type="number" value={draft.dailyTarget} onChange={e => setDraft({...draft, dailyTarget:e.target.value})}
+                      placeholder="Daily target"
+                      style={{ flex:1, padding:'5px 8px', background:'#1a1a2e', border:'1px solid #333', borderRadius:7, color:'#fff', fontSize:12, outline:'none' }}/>
+                    <input type="number" value={draft.weeklyTarget} onChange={e => setDraft({...draft, weeklyTarget:e.target.value})}
+                      placeholder="Weekly target"
+                      style={{ flex:1, padding:'5px 8px', background:'#1a1a2e', border:'1px solid #333', borderRadius:7, color:'#fff', fontSize:12, outline:'none' }}/>
+                  </>
+                )}
+              </div>
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={addHabit} style={{ flex:1, padding:'9px', background:'#a855f7', border:'none', borderRadius:8, color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer' }}>Add</button>
+                <button onClick={() => setShowAdd(false)} style={{ padding:'9px 16px', background:'#1a1a2e', border:'none', borderRadius:8, color:'#a1a1aa', fontSize:13, cursor:'pointer' }}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setShowAdd(true)} style={{
+              width:'100%', padding:13, background:'#12121a', border:'2px dashed #1c1c28',
+              borderRadius:12, color:'#52525b', fontSize:13, cursor:'pointer',
+              display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+            }}>
+              <IcoPlus size={14}/> Add Habit
+            </button>
+          )}
+        </div>
+      );
+    };
+
+    /* ─────────────────────────── STATS TAB ─────────────────────────── */
+
+    const StatsTab = ({ blocks, habits, logs }) => {
+      const today = new Date();
+      const todayStr = getDateStr(today);
+
+      const weekDays = useMemo(() => getWeekDays(today), [todayStr]);
+      const dots30 = useMemo(() => last30Days(), [todayStr]);
+
+      const weekStats = useMemo(() => weekDays.map(d => {
+        const ds = getDateStr(d);
+        const db = todayBlocks(blocks, d);
+        const done = db.filter(b => logs[ds]?.[b.id]?.completed).length;
+        const pct = db.length > 0 ? Math.round((done/db.length)*100) : 0;
+        const isFuture = ds > todayStr;
+        const isToday = ds === todayStr;
+        return { ds, pct, isFuture, isToday, label: d.toLocaleDateString('en-US',{weekday:'short'}).slice(0,1) };
+      }), [blocks, logs, todayStr]);
+
+      const trackTargets = useMemo(() => {
+        const targets = [
+          ...blocks.filter(b => b.trackable && b.weeklyTarget).map(item => ({ ...item, kind:'block' })),
+          ...habits.filter(h => h.trackable && h.weeklyTarget).map(item => ({ ...item, kind:'habit' })),
+        ];
+        return targets.map(item => {
+          let total = 0;
+          weekDays.forEach(d => {
+            const v = logs[getDateStr(d)]?.[item.id]?.value;
+            if (v != null) total += v;
+          });
+          const remaining = Math.max(0, item.weeklyTarget - total);
+          const daysLeft = weekDays.filter(d => getDateStr(d) >= todayStr && item.activeDays.includes(d.getDay())).length;
+          const needed = daysLeft > 0 ? Math.ceil(remaining / daysLeft) : 0;
+          const done = remaining <= 0;
+          const impossible = !done && daysLeft > 0 && item.dailyTarget != null && needed > item.dailyTarget;
+          return { item, total, remaining, daysLeft, needed, done, impossible };
+        });
+      }, [blocks, habits, logs, todayStr]);
+
+      const insights = useMemo(() => {
+        const ins = [];
+        const wds = getWeekDays(new Date());
+        const l30 = last30Days();
+        const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+        const gymH = habits.find(h => h.name.toLowerCase().includes('gym'));
+        if (gymH) {
+          const ds = Array(7).fill(null).map(() => ({done:0,total:0}));
+          l30.forEach(d => {
+            const dow = d.getDay();
+            if (!gymH.activeDays.includes(dow)) return;
+            ds[dow].total++;
+            if (logs[getDateStr(d)]?.[gymH.id]?.completed) ds[dow].done++;
+          });
+          const worst = gymH.activeDays.reduce((w, dow) => {
+            if (ds[dow].total === 0) return w;
+            const p = ds[dow].done/ds[dow].total;
+            const wp = ds[w]?.total > 0 ? ds[w].done/ds[w].total : 1;
+            return p < wp ? dow : w;
+          }, gymH.activeDays[0]);
+          if (ds[worst]?.total >= 2) ins.push(`Your gym consistency is lowest on ${dayNames[worst]}s — plan around it.`);
+        }
+
+        const calH = habits.find(h => h.trackable && (h.name.toLowerCase().includes('calor') || h.name.toLowerCase().includes('3000')));
+        if (calH) {
+          const thisWk = wds.filter(d => getDateStr(d) <= todayStr && calH.activeDays.includes(d.getDay()));
+          const lastWk = Array.from({length:7}, (_,i) => { const d = new Date(wds[0]); d.setDate(d.getDate()-(7-i)); return d; }).filter(d => calH.activeDays.includes(d.getDay()));
+          const countDone = days => days.filter(d => logs[getDateStr(d)]?.[calH.id]?.completed).length;
+          const tc = countDone(thisWk), lc = countDone(lastWk);
+          if (thisWk.length > 0 && lastWk.length > 0 && tc !== lc) {
+            ins.push(`Calorie target hit ${tc}/${thisWk.length} days this week — ${tc > lc ? `up from ${lc}` : `down from ${lc}`} last week.`);
+          }
+        }
+
+        if (ins.length === 0) ins.push('Keep logging for a week to unlock insights.');
+        return ins.slice(0,3);
+      }, [habits, logs, todayStr]);
+
+      return (
+        <div style={{ padding:'20px 16px 12px' }}>
+          <h2 style={{ fontSize:20, fontWeight:700, color:'#fff', marginBottom:18 }}>Stats</h2>
+
+          {/* This Week bar chart */}
+          <div style={{ background:'#12121a', borderRadius:12, padding:16, marginBottom:10 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:'#52525b', letterSpacing:1, textTransform:'uppercase', marginBottom:14 }}>This Week</div>
+            <div style={{ display:'flex', gap:5, alignItems:'flex-end', height:90 }}>
+              {weekStats.map(({ ds, pct, isFuture, isToday, label }) => (
+                <div key={ds} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3, height:'100%' }}>
+                  <div style={{ flex:1, width:'100%', display:'flex', flexDirection:'column', justifyContent:'flex-end' }}>
+                    <div style={{
+                      width:'100%',
+                      height: isFuture ? 4 : Math.max(pct * 0.74, 4),
+                      background: isToday ? '#a855f7' : isFuture ? '#1a1a2e' : '#06b6d4',
+                      borderRadius:'3px 3px 0 0',
+                      transition:'height 0.4s ease',
+                    }}/>
+                  </div>
+                  <div style={{ fontSize:9, color: isToday ? '#a855f7' : '#52525b', fontWeight: isToday ? 700 : 400 }}>{label}</div>
+                  {!isFuture && <div style={{ fontSize:9, color:'#3a3a4a' }}>{pct}%</div>}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Weekly targets */}
+          {trackTargets.length > 0 && (
+            <div style={{ background:'#12121a', borderRadius:12, padding:16, marginBottom:10 }}>
+              <div style={{ fontSize:11, fontWeight:600, color:'#52525b', letterSpacing:1, textTransform:'uppercase', marginBottom:14 }}>Weekly Targets</div>
+              {trackTargets.map(({ item, total, remaining, daysLeft, needed, done, impossible }) => (
+                <div key={item.id} style={{ marginBottom:14 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:5 }}>
+                    <span style={{ fontSize:13, color:'#fff', fontWeight:500 }}>{item.name}</span>
+                    <span style={{ fontSize:11, color: done ? '#22c55e' : impossible ? '#ef4444' : '#f59e0b', fontWeight:500 }}>
+                      {done ? '✓ Done' : `${needed}/day needed`}
+                    </span>
+                  </div>
+                  <div style={{ height:4, background:'#1a1a2e', borderRadius:2, overflow:'hidden', marginBottom:4 }}>
+                    <div style={{
+                      height:'100%', borderRadius:2,
+                      width:`${Math.min((total/item.weeklyTarget)*100,100)}%`,
+                      background: done ? '#22c55e' : impossible ? '#ef4444' : '#f59e0b',
+                      transition:'width 0.4s ease',
+                    }}/>
+                  </div>
+                  <div style={{ fontSize:11, color:'#52525b' }}>
+                    {total}/{item.weeklyTarget} — {remaining > 0 ? `${remaining} left in ${daysLeft} day${daysLeft!==1?'s':''}` : 'Target reached!'}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Trends */}
+          <div style={{ background:'#12121a', borderRadius:12, padding:16, marginBottom:10 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:'#52525b', letterSpacing:1, textTransform:'uppercase', marginBottom:14 }}>Trends</div>
+            {insights.map((ins, i) => (
+              <div key={i} style={{ display:'flex', gap:8, marginBottom: i < insights.length-1 ? 10 : 0 }}>
+                <IcoTrend size={13} style={{ color:'#a855f7', flexShrink:0, marginTop:1 }}/>
+                <span style={{ fontSize:13, color:'#a1a1aa', lineHeight:1.45 }}>{ins}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* 30-day habit overview */}
+          <div style={{ background:'#12121a', borderRadius:12, padding:16, marginBottom:12 }}>
+            <div style={{ fontSize:11, fontWeight:600, color:'#52525b', letterSpacing:1, textTransform:'uppercase', marginBottom:14 }}>30-Day Overview</div>
+            {habits.map(h => (
+              <div key={h.id} style={{ marginBottom:14 }}>
+                <div style={{ fontSize:12, color:'#fff', marginBottom:6, display:'flex', gap:6, alignItems:'center' }}>
+                  <span>{h.icon}</span>{h.name}
+                </div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:2 }}>
+                  {dots30.map((d, i) => {
+                    const ds = getDateStr(d);
+                    const done = logs[ds]?.[h.id]?.completed;
+                    const active = h.activeDays.includes(d.getDay());
+                    return <div key={i} style={{ width:9, height:9, borderRadius:2, background: !active ? 'transparent' : done ? '#06b6d4' : '#1a1a2e' }}/>;
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    /* ─────────────────────────── EDIT TAB ─────────────────────────── */
+
+    const EditTab = ({ blocks, setBlocks, habits, setHabits, setLogs }) => {
+      const [editBId, setEditBId] = useState(null);
+      const [editHId, setEditHId] = useState(null);
+      const [confirmDel, setConfirmDel] = useState(null);
+      const [confirmReset, setConfirmReset] = useState(false);
+      const [showAddHabit, setShowAddHabit] = useState(false);
+      const [habitDraft, setHabitDraft] = useState({ name:'', icon:'⭐', activeDays:[1,2,3,4,5,6], trackable:false, dailyTarget:'', weeklyTarget:'' });
+
+      const moveBlock = (i, dir) => {
+        const arr = [...blocks];
+        const j = i+dir;
+        if (j < 0 || j >= arr.length) return;
+        [arr[i],arr[j]] = [arr[j],arr[i]];
+        setBlocks(arr);
+      };
+
+      const updBlock = (id, patch) => setBlocks(prev => prev.map(b => b.id===id ? {...b,...patch} : b));
+      const updHabit = (id, patch) => setHabits(prev => prev.map(h => h.id===id ? {...h,...patch} : h));
+
+      const addHabit = () => {
+        if (!habitDraft.name.trim()) return;
+        const next = {
+          ...habitDraft,
+          id: uid(),
+          dailyTarget: habitDraft.dailyTarget ? parseInt(habitDraft.dailyTarget, 10) || null : null,
+          weeklyTarget: habitDraft.weeklyTarget ? parseInt(habitDraft.weeklyTarget, 10) || null : null
+        };
+        setHabits(prev => [...prev, next]);
+        setShowAddHabit(false);
+        setEditHId(next.id);
+        setHabitDraft({ name:'', icon:'⭐', activeDays:[1,2,3,4,5,6], trackable:false, dailyTarget:'', weeklyTarget:'' });
+      };
+
+      const reset = () => {
+        setBlocks(DEFAULT_BLOCKS);
+        setHabits(DEFAULT_HABITS);
+        setLogs({});
+        localStorage.removeItem('dailyLogs');
+        localStorage.removeItem('dismissedNudges');
+        setConfirmReset(false);
+      };
+
+      const DayPicker = ({ days, onChange }) => (
+        <div style={{ display:'flex', gap:4 }}>
+          {DSHRT.map((d,i) => (
+            <button key={i} onClick={() => onChange(days.includes(i) ? days.filter(x=>x!==i) : [...days,i])}
+              style={{ flex:1, padding:'5px 0', fontSize:10, fontWeight:600, borderRadius:6, border:'none', cursor:'pointer',
+                background: days.includes(i) ? '#a855f7' : '#12121a', color: days.includes(i) ? '#fff' : '#52525b' }}>
+              {d}
+            </button>
+          ))}
+        </div>
+      );
+
+      const BlockEditor = ({ b }) => (
+        <div style={{ background:'#1a1a2e', borderRadius:10, padding:14, marginBottom:6 }}>
+          <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+            <input value={b.icon} onChange={e => updBlock(b.id,{icon:e.target.value})}
+              style={{ width:44, padding:6, background:'#12121a', border:'1px solid #333', borderRadius:8, color:'#fff', fontSize:18, outline:'none', textAlign:'center' }}/>
+            <input value={b.name} onChange={e => updBlock(b.id,{name:e.target.value})} placeholder="Block name"
+              style={{ flex:1, padding:'7px 10px', background:'#12121a', border:'1px solid #333', borderRadius:8, color:'#fff', fontSize:13, outline:'none' }}/>
+          </div>
+
+          <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+            {['timeStart','timeEnd'].map(field => (
+              <div key={field} style={{ flex:1 }}>
+                <div style={{ fontSize:10, color:'#52525b', marginBottom:4 }}>{field==='timeStart'?'START':'END'}</div>
+                <input type="time" value={b[field]==='24:00'?'00:00':b[field]} onChange={e => updBlock(b.id,{[field]:e.target.value})}
+                  style={{ width:'100%', padding:'6px 8px', background:'#12121a', border:'1px solid #333', borderRadius:8, color:'#fff', fontSize:13, outline:'none', colorScheme:'dark' }}/>
+              </div>
+            ))}
+          </div>
+
+          {/* Category picker */}
+          <div style={{ display:'flex', gap:5, marginBottom:10 }}>
+            {Object.entries(CAT).map(([cat,clr]) => (
+              <button key={cat} onClick={() => updBlock(b.id,{category:cat})} style={{
+                flex:1, padding:'5px 0', fontSize:10, fontWeight:600, borderRadius:6, border:'1px solid transparent',
+                cursor:'pointer', textTransform:'capitalize',
+                background: b.category===cat ? clr+'22' : '#12121a',
+                color: b.category===cat ? clr : '#52525b',
+                borderColor: b.category===cat ? clr+'55' : 'transparent',
+              }}>{cat}</button>
+            ))}
+          </div>
+
+          <div style={{ marginBottom:10 }}>
+            <DayPicker days={b.activeDays} onChange={days => updBlock(b.id,{activeDays:days})}/>
+          </div>
+
+          <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:12 }}>
+            <label style={{ display:'flex', gap:7, alignItems:'center', cursor:'pointer' }}>
+              <input type="checkbox" checked={!!b.trackable} onChange={e => updBlock(b.id,{trackable:e.target.checked})} style={{ accentColor:'#a855f7', width:14, height:14 }}/>
+              <span style={{ fontSize:12, color:'#a1a1aa' }}>Trackable</span>
+            </label>
+            {b.trackable && (
+              <>
+                <input type="number" value={b.dailyTarget||''} onChange={e => updBlock(b.id,{dailyTarget:parseInt(e.target.value)||null})}
+                  placeholder="Daily target" style={{ flex:1, padding:'5px 8px', background:'#12121a', border:'1px solid #333', borderRadius:6, color:'#fff', fontSize:12, outline:'none' }}/>
+                <input type="number" value={b.weeklyTarget||''} onChange={e => updBlock(b.id,{weeklyTarget:parseInt(e.target.value)||null})}
+                  placeholder="Weekly target" style={{ flex:1, padding:'5px 8px', background:'#12121a', border:'1px solid #333', borderRadius:6, color:'#fff', fontSize:12, outline:'none' }}/>
+              </>
+            )}
+          </div>
+
+          <div style={{ display:'flex', gap:6 }}>
+            <button onClick={() => setEditBId(null)} style={{ flex:1, padding:'8px', background:'#a855f7', border:'none', borderRadius:8, color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer' }}>Done</button>
+            <button onClick={() => setConfirmDel(`b_${b.id}`)} style={{ padding:'8px 12px', background:'#1a1a2e', border:'none', borderRadius:8, color:'#ef4444', cursor:'pointer', display:'flex', alignItems:'center' }}>
+              <IcoTrash size={14}/>
+            </button>
+          </div>
+        </div>
+      );
+
+      const HabitEditor = ({ h }) => (
+        <div style={{ background:'#1a1a2e', borderRadius:10, padding:14, marginBottom:6 }}>
+          <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+            <input value={h.icon} onChange={e => updHabit(h.id,{icon:e.target.value})}
+              style={{ width:44, padding:6, background:'#12121a', border:'1px solid #333', borderRadius:8, color:'#fff', fontSize:18, outline:'none', textAlign:'center' }}/>
+            <input value={h.name} onChange={e => updHabit(h.id,{name:e.target.value})}
+              style={{ flex:1, padding:'7px 10px', background:'#12121a', border:'1px solid #333', borderRadius:8, color:'#fff', fontSize:13, outline:'none' }}/>
+          </div>
+          <div style={{ marginBottom:10 }}>
+            <DayPicker days={h.activeDays} onChange={days => updHabit(h.id,{activeDays:days})}/>
+          </div>
+          <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:12 }}>
+            <label style={{ display:'flex', gap:7, alignItems:'center', cursor:'pointer' }}>
+              <input type="checkbox" checked={!!h.trackable} onChange={e => updHabit(h.id,{trackable:e.target.checked})} style={{ accentColor:'#a855f7', width:14, height:14 }}/>
+              <span style={{ fontSize:12, color:'#a1a1aa' }}>Trackable number</span>
+            </label>
+            {h.trackable && (
+              <>
+                <input type="number" value={h.dailyTarget||''} onChange={e => updHabit(h.id,{dailyTarget:parseInt(e.target.value)||null})}
+                  placeholder="Daily target" style={{ flex:1, padding:'5px 8px', background:'#12121a', border:'1px solid #333', borderRadius:6, color:'#fff', fontSize:12, outline:'none' }}/>
+                <input type="number" value={h.weeklyTarget||''} onChange={e => updHabit(h.id,{weeklyTarget:parseInt(e.target.value)||null})}
+                  placeholder="Weekly target" style={{ flex:1, padding:'5px 8px', background:'#12121a', border:'1px solid #333', borderRadius:6, color:'#fff', fontSize:12, outline:'none' }}/>
+              </>
+            )}
+          </div>
+          <div style={{ display:'flex', gap:6 }}>
+            <button onClick={() => setEditHId(null)} style={{ flex:1, padding:'8px', background:'#a855f7', border:'none', borderRadius:8, color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer' }}>Done</button>
+            <button onClick={() => setConfirmDel(`h_${h.id}`)} style={{ padding:'8px 12px', background:'#12121a', border:'none', borderRadius:8, color:'#ef4444', cursor:'pointer', display:'flex', alignItems:'center' }}>
+              <IcoTrash size={14}/>
+            </button>
+          </div>
+        </div>
+      );
+
+      const ConfirmDel = ({ label, onConfirm }) => (
+        <div style={{ background:'#1a1a2e', borderRadius:10, padding:'12px 14px', marginBottom:6, display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{ flex:1, fontSize:13, color:'#fff' }}>Delete "{label}"?</span>
+          <button onClick={onConfirm} style={{ padding:'5px 14px', background:'#ef4444', border:'none', borderRadius:6, color:'#fff', fontSize:12, cursor:'pointer' }}>Delete</button>
+          <button onClick={() => setConfirmDel(null)} style={{ padding:'5px 12px', background:'#333', border:'none', borderRadius:6, color:'#fff', fontSize:12, cursor:'pointer' }}>Cancel</button>
+        </div>
+      );
+
+      return (
+        <div style={{ padding:'20px 16px 12px' }}>
+          <h2 style={{ fontSize:20, fontWeight:700, color:'#fff', marginBottom:18 }}>Edit Routine</h2>
+
+          <div style={{ fontSize:11, fontWeight:600, color:'#52525b', letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>Blocks</div>
+
+          {blocks.map((b,i) => (
+            <div key={b.id}>
+              {confirmDel===`b_${b.id}` && <ConfirmDel label={b.name} onConfirm={() => { setBlocks(prev => prev.filter(x=>x.id!==b.id)); setConfirmDel(null); }}/>}
+              {editBId===b.id ? <BlockEditor b={b}/> : (
+                <div style={{ background:'#12121a', borderRadius:10, padding:'10px 12px', marginBottom:6, display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ fontSize:14 }}>{b.icon}</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:500, color:'#fff' }}>{b.name}</div>
+                    <div style={{ fontSize:11, color:'#52525b' }}>{fmt12(b.timeStart)} – {fmt12(b.timeEnd)}</div>
+                  </div>
+                  <div style={{ display:'flex', gap:2, alignItems:'center' }}>
+                    <button onClick={() => moveBlock(i,-1)} disabled={i===0}
+                      style={{ background:'none', border:'none', color:i===0?'#2a2a2a':'#52525b', cursor:i===0?'default':'pointer', padding:4 }}>
+                      <IcoUp size={14}/>
+                    </button>
+                    <button onClick={() => moveBlock(i,1)} disabled={i===blocks.length-1}
+                      style={{ background:'none', border:'none', color:i===blocks.length-1?'#2a2a2a':'#52525b', cursor:i===blocks.length-1?'default':'pointer', padding:4 }}>
+                      <IcoDn size={14}/>
+                    </button>
+                    <button onClick={() => setEditBId(b.id)}
+                      style={{ background:'none', border:'none', color:'#a1a1aa', cursor:'pointer', padding:4 }}>
+                      <IcoEdit size={14}/>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          <button onClick={() => {
+            const nb = { id:uid(), name:'New Block', category:'work', timeStart:'09:00', timeEnd:'10:00', activeDays:[1,2,3,4,5,6], weeklyTarget:null, trackable:false, dailyTarget:null, icon:'📌' };
+            setBlocks(prev => [...prev, nb]); setEditBId(nb.id);
+          }} style={{ width:'100%', padding:12, marginBottom:24, background:'#12121a', border:'2px dashed #1c1c28', borderRadius:12, color:'#52525b', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            <IcoPlus size={14}/> Add Block
+          </button>
+
+          <div style={{ fontSize:11, fontWeight:600, color:'#52525b', letterSpacing:1, textTransform:'uppercase', marginBottom:10 }}>Habits</div>
+
+          {habits.map(h => (
+            <div key={h.id}>
+              {confirmDel===`h_${h.id}` && <ConfirmDel label={h.name} onConfirm={() => { setHabits(prev => prev.filter(x=>x.id!==h.id)); setConfirmDel(null); }}/>}
+              {editHId===h.id ? <HabitEditor h={h}/> : (
+                <div style={{ background:'#12121a', borderRadius:10, padding:'10px 12px', marginBottom:6, display:'flex', alignItems:'center', gap:10 }}>
+                  <span style={{ fontSize:14 }}>{h.icon}</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, fontWeight:500, color:'#fff' }}>{h.name}</div>
+                    <div style={{ fontSize:11, color:'#52525b' }}>{dayLabel(h.activeDays)}</div>
+                  </div>
+                  <div style={{ display:'flex', gap:2 }}>
+                    <button onClick={() => setEditHId(h.id)} style={{ background:'none', border:'none', color:'#a1a1aa', cursor:'pointer', padding:4 }}><IcoEdit size={14}/></button>
+                    <button onClick={() => setConfirmDel(`h_${h.id}`)} style={{ background:'none', border:'none', color:'#52525b', cursor:'pointer', padding:4 }}><IcoTrash size={14}/></button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          {showAddHabit ? (
+            <div style={{ background:'#1a1a2e', borderRadius:10, padding:14, marginBottom:12 }}>
+              <div style={{ display:'flex', gap:8, marginBottom:10 }}>
+                <input value={habitDraft.icon} onChange={e => setHabitDraft({...habitDraft, icon:e.target.value})}
+                  style={{ width:44, padding:6, background:'#12121a', border:'1px solid #333', borderRadius:8, color:'#fff', fontSize:18, outline:'none', textAlign:'center' }}/>
+                <input value={habitDraft.name} onChange={e => setHabitDraft({...habitDraft, name:e.target.value})}
+                  placeholder="Habit name"
+                  style={{ flex:1, padding:'7px 10px', background:'#12121a', border:'1px solid #333', borderRadius:8, color:'#fff', fontSize:13, outline:'none' }}/>
+              </div>
+              <div style={{ marginBottom:10 }}>
+                <DayPicker days={habitDraft.activeDays} onChange={days => setHabitDraft({...habitDraft, activeDays:days})}/>
+              </div>
+              <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:12 }}>
+                <label style={{ display:'flex', gap:7, alignItems:'center', cursor:'pointer' }}>
+                  <input type="checkbox" checked={!!habitDraft.trackable} onChange={e => setHabitDraft({...habitDraft, trackable:e.target.checked})} style={{ accentColor:'#a855f7', width:14, height:14 }}/>
+                  <span style={{ fontSize:12, color:'#a1a1aa' }}>Trackable number</span>
+                </label>
+                {habitDraft.trackable && (
+                  <>
+                    <input type="number" value={habitDraft.dailyTarget} onChange={e => setHabitDraft({...habitDraft, dailyTarget:e.target.value})}
+                      placeholder="Daily target" style={{ flex:1, padding:'5px 8px', background:'#12121a', border:'1px solid #333', borderRadius:6, color:'#fff', fontSize:12, outline:'none' }}/>
+                    <input type="number" value={habitDraft.weeklyTarget} onChange={e => setHabitDraft({...habitDraft, weeklyTarget:e.target.value})}
+                      placeholder="Weekly target" style={{ flex:1, padding:'5px 8px', background:'#12121a', border:'1px solid #333', borderRadius:6, color:'#fff', fontSize:12, outline:'none' }}/>
+                  </>
+                )}
+              </div>
+              <div style={{ display:'flex', gap:6 }}>
+                <button onClick={addHabit} style={{ flex:1, padding:'8px', background:'#a855f7', border:'none', borderRadius:8, color:'#fff', fontSize:12, fontWeight:600, cursor:'pointer' }}>Add Habit</button>
+                <button onClick={() => setShowAddHabit(false)} style={{ padding:'8px 12px', background:'#12121a', border:'none', borderRadius:8, color:'#a1a1aa', cursor:'pointer' }}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setShowAddHabit(true)} style={{ width:'100%', padding:12, marginBottom:12, background:'#12121a', border:'2px dashed #1c1c28', borderRadius:12, color:'#52525b', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+              <IcoPlus size={14}/> Add Habit
+            </button>
+          )}
+
+          <div style={{ marginTop:32, marginBottom:16 }}>
+            {confirmReset ? (
+              <div style={{ background:'#12121a', borderRadius:12, padding:16, textAlign:'center' }}>
+                <div style={{ fontSize:13, color:'#a1a1aa', marginBottom:14, lineHeight:1.5 }}>Reset everything to defaults? All logs will be cleared.</div>
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={reset} style={{ flex:1, padding:'9px', background:'#ef4444', border:'none', borderRadius:8, color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer' }}>Reset All</button>
+                  <button onClick={() => setConfirmReset(false)} style={{ flex:1, padding:'9px', background:'#1a1a2e', border:'none', borderRadius:8, color:'#a1a1aa', fontSize:13, cursor:'pointer' }}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmReset(true)} style={{ width:'100%', padding:12, background:'transparent', border:'1px solid #1a1a2e', borderRadius:12, color:'#52525b', fontSize:13, cursor:'pointer' }}>
+                Reset to Defaults
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    /* ─────────────────────────── APP ─────────────────────────── */
+
+    function App() {
+      const [tab, setTab] = useState('today');
+      const [todayKey, setTodayKey] = useState(getDateStr(new Date()));
+
+      const [blocks, setBlocks] = useState(() => {
+        try {
+          const s = localStorage.getItem('routineBlocks');
+          return s ? normalizeBlocks(JSON.parse(s)) : DEFAULT_BLOCKS;
+        } catch { return DEFAULT_BLOCKS; }
+      });
+      const [habits, setHabits] = useState(() => {
+        try {
+          const s = localStorage.getItem('habits');
+          return s ? normalizeHabits(JSON.parse(s)) : DEFAULT_HABITS;
+        } catch { return DEFAULT_HABITS; }
+      });
+      const [logs, setLogs] = useState(() => {
+        try { const s = localStorage.getItem('dailyLogs'); return s ? JSON.parse(s) : {}; } catch { return {}; }
+      });
+
+      useEffect(() => { localStorage.setItem('routineBlocks', JSON.stringify(blocks)); }, [blocks]);
+      useEffect(() => { localStorage.setItem('habits', JSON.stringify(habits)); }, [habits]);
+      useEffect(() => { localStorage.setItem('dailyLogs', JSON.stringify(logs)); }, [logs]);
+      useEffect(() => {
+        const interval = setInterval(() => {
+          const next = getDateStr(new Date());
+          setTodayKey(prev => prev === next ? prev : next);
+        }, 60000);
+        return () => clearInterval(interval);
+      }, []);
+
+      return (
+        <div style={{ background:'#0a0a0f', minHeight:'100dvh' }} data-day={todayKey}>
+          <div className="scroll-area">
+            {tab==='today'  && <TodayTab  blocks={blocks} habits={habits} logs={logs} setLogs={setLogs}/>}
+            {tab==='habits' && <HabitsTab habits={habits} setHabits={setHabits} logs={logs} setLogs={setLogs}/>}
+            {tab==='stats'  && <StatsTab  blocks={blocks} habits={habits} logs={logs}/>}
+            {tab==='edit'   && <EditTab   blocks={blocks} setBlocks={setBlocks} habits={habits} setHabits={setHabits} setLogs={setLogs}/>}
+          </div>
+          <Nav tab={tab} setTab={setTab}/>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App/>);
+  </script>
+</body>
+</html>
